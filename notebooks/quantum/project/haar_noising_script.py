@@ -1,33 +1,45 @@
-# %%
-from scipy.stats import unitary_group
-import h5py
+from scipy.stats import rv_continuous
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
 import pennylane as qml
-from pennylane.templates import RandomLayers
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
+dev = qml.device("default.qubit", wires=2) 
 
-# %%
-def haar_random_unitary(seed=None):
-    if seed is not None:
-        np.random.seed(seed)
-    return unitary_group.rvs(4)
+class sin_prob_dist(rv_continuous):
+    def _pdf(self, theta):
+        return 0.5 * np.sin(theta)
 
-def apply_haar_scrambling(encoded_data, num_samples, seed):
+sin_sampler = sin_prob_dist(a=0, b=np.pi)
+
+@qml.qnode(dev)
+def haar_random_unitary():
+    phi1, omega1 = 2 * np.pi * np.random.uniform(size=2)
+    theta1 = sin_sampler.rvs(size=1)
+    
+    phi2, omega2 = 2 * np.pi * np.random.uniform(size=2)
+    theta2 = sin_sampler.rvs(size=1)
+    
+    qml.Rot(phi1, theta1, omega1, wires=0)
+    qml.Rot(phi2, theta2, omega2, wires=1)
+    
+    return qml.state()
+
+def apply_haar_scrambling(encoded_data, num_samples, seed=None):
     scrambled_vectors = []
 
     for sample in range(num_samples):
         scrambled_vector = []
-        for i in range(8):
+        for _ in range(8):
             channels = []
-            for j in range(8):
-                U = haar_random_unitary(seed)
-                scrambled_state = np.dot(U, encoded_data[sample, i, j, :])
+            for _ in range(8):
+                if seed is not None:
+                    np.random.seed(seed)
+
+                # Haar random unitary for 4D vector with 2 qubits
+                scrambled_state = haar_random_unitary()
+
+                scrambled_state = np.reshape(scrambled_state, (4,))
                 scrambled_state /= np.linalg.norm(scrambled_state)
+
                 channels.append(scrambled_state)
 
                 if seed is not None:
@@ -36,5 +48,3 @@ def apply_haar_scrambling(encoded_data, num_samples, seed):
         scrambled_vectors.append(scrambled_vector)
 
     return np.array(scrambled_vectors)
-
-
