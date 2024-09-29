@@ -25,12 +25,13 @@ def haar_random_unitary():
 
 def apply_haar_scrambling(encoded_data, num_samples, seed=None):
     scrambled_vectors = []
+    new_dim = encoded_data.shape[1]
 
     for sample in range(num_samples):
         scrambled_vector = []
-        for _ in range(8):
+        for _ in range(new_dim):
             channels = []
-            for _ in range(8):
+            for _ in range(new_dim):
                 if seed is not None:
                     np.random.seed(seed)
 
