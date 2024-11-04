@@ -4,7 +4,9 @@ This is a research project for ML4Sci with Google Summer of Code aimed at buildi
 
 ## Description
 
-The mid-term update blog for this project can be accessed here: [text](https://medium.com/@mashapotatoes/gsoc-2024-quantum-diffusion-models-for-high-energy-physics-892e59ddcd3e).
+The mid-term update blog for this project can be accessed here: [QDM Part I](https://medium.com/@mashapotatoes/gsoc-2024-quantum-diffusion-models-for-high-energy-physics-892e59ddcd3e).
+
+The final blog can be accessed here: [QDM Part II](https://medium.com/@mashapotatoes/6e693d625931).
 
 ## Getting Started
 
@@ -17,4 +19,5 @@ The mid-term update blog for this project can be accessed here: [text](https://m
 ### Executing program
 
 * Most of the code is in Jupyter notebooks with preloaded examples
+* The utils scripts are in .py files with helper functions and statistics
 * Run each notebook separately cell by cell or export to python scripts

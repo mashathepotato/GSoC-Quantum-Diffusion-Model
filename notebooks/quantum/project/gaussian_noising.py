@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 # %%
-def haar_random_unitary(seed=None):
+def normal_random_unitary(seed=None):
     if seed is not None:
         np.random.seed(seed)
     return unitary_group.rvs(4)
@@ -26,7 +26,7 @@ def apply_haar_scrambling(encoded_data, num_samples, seed):
         for i in range(8):
             channels = []
             for j in range(8):
-                U = haar_random_unitary(seed)
+                U = normal_random_unitary(seed)
                 scrambled_state = np.dot(U, encoded_data[sample, i, j, :])
                 scrambled_state /= np.linalg.norm(scrambled_state)
                 channels.append(scrambled_state)
