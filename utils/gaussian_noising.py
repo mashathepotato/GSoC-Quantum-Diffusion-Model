@@ -37,5 +37,3 @@ def apply_haar_scrambling(encoded_data, num_samples, seed):
         scrambled_vectors.append(scrambled_vector)
 
     return np.array(scrambled_vectors)
-
-

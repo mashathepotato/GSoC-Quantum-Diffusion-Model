@@ -4,3 +4,5 @@
 # Reach out for download
 data/quark-gluon_train-set_n793900.hdf5
 data/QG1_normalized_64x64_10k
+
+utils/__pycache__/*
