@@ -16,14 +16,14 @@ import numpy as np
     
 #     return np.array(scrambled_vectors)
 
-# def scramble_state_vectors(encoded_data, seed):
-#     np.random.seed(seed)
-#     scrambled_vectors = []
-#     for i in range(len(encoded_data)):
-#         gaussian_matrix = np.random.normal(0, 0.1, (16, 16))
-#         scrambled_state = np.multiply(gaussian_matrix, encoded_data[i])
-#         scrambled_vectors.append(scrambled_state)
-#     return np.array(scrambled_vectors).reshape(len(encoded_data), 8, 8, 4)
+def scramble_state_vectors(encoded_data, seed):
+    np.random.seed(seed)
+    scrambled_vectors = []
+    for i in range(len(encoded_data)):
+        gaussian_matrix = np.random.normal(0, 0.1, (16, 16))
+        scrambled_state = np.multiply(gaussian_matrix, encoded_data[i])
+        scrambled_vectors.append(scrambled_state)
+    return np.array(scrambled_vectors).reshape(len(encoded_data), 8, 8, 4)
 
 def scramble_vectors(vectors, num_steps=1000, beta_min=0.0001, beta_max=0.02, seed=42):
     """
