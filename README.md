@@ -8,12 +8,14 @@ The mid-term update blog for this project can be accessed here: [QDM Part I](htt
 
 The final blog can be accessed here: [QDM Part II](https://medium.com/@mashapotatoes/6e693d625931).
 
+More details can be found at the [MLNCP NeurIPS 2024 Workshop](https://openreview.net/pdf?id=vUQLzDAdqt) website.
+
 ## Getting Started
 
 ### Dependencies and Installation
 
 * ``` pip install requirements.txt ``` to download all dependencies in your own environment
-* All code and model training can run locally on cropped data (16x16) and smaller sample sizes (eg. 1k instead of 100k samples)
+* All code and model training can run locally on cropped data (16x16) and smaller sample sizes (e.g. 1k instead of 100k samples)
 * Quantum or hybrid models use Pennylane for simulations, which can be much slower than the classical variant, so experimenting with the device could be helpful depending on hardware availability
 
 ### Executing program
