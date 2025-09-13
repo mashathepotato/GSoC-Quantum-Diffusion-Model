@@ -9,3 +9,4 @@ data/Q1_16x16_100k_encoded.pt
 data/QG1_16x16_images
 
 utils/__pycache__/*
+.DS_Store
