@@ -26,8 +26,9 @@ def angle_encoding(image, wires, threshold=1e-6):
     Only encodes nonzero pixels.
     """
     idx, vals = get_sparse_indices(image, threshold)
+    n_wires = len(wires)
     for i, v in zip(idx, vals):
-        qml.RY(v, wires=wires[i])
+        qml.RY(v, wires=wires[i % n_wires])
 
 
 ######################################

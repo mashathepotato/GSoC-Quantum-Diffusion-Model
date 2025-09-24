@@ -1,6 +1,7 @@
 from scipy.stats import rv_continuous
 import numpy as np
 import pennylane as qml
+from numpy.linalg import norm
 
 dev = qml.device("default.qubit", wires=2) 
 
@@ -169,3 +170,134 @@ def apply_global_haar_scrambling(encoded_data, seed=None, force_su=False, approx
         scrambled[i] /= norm(scrambled[i])
 
     return scrambled, unitaries
+
+
+# SIMULATING HAAR VIA RANDOM CIRCUITS FOR MEMORY EFFICIENCY
+def _make_random_circuit_params(n_qubits, depth, rng):
+    """
+    Return a params array of shape (depth, n_qubits, 3) for qml.Rot per-qubit.
+    Each gate uses 3 Euler angles.
+    """
+    # shape: (depth, n_qubits, 3)
+    return rng.random(size=(depth, n_qubits, 3)) * 2 * np.pi
+
+def _apply_entangling_layer(n_qubits, layer_idx):
+    """
+    Brickwork entangling pattern:
+      - even layer: CNOTs between (0,1), (2,3), ...
+      - odd  layer: CNOTs between (1,2), (3,4), ...
+    We use CNOT for speed and universality.
+    """
+    if n_qubits < 2:
+        return
+    if layer_idx % 2 == 0:
+        # even layer: pairs (0,1), (2,3), ...
+        for i in range(0, n_qubits - 1, 2):
+            qml.CNOT(wires=[i, i + 1])
+    else:
+        # odd layer: pairs (1,2), (3,4), ...
+        for i in range(1, n_qubits - 1, 2):
+            qml.CNOT(wires=[i, i + 1])
+
+def build_scrambler_qnode(n_qubits, depth, params, device=None):
+    """
+    Build and return a QNode that:
+      - Prepares an input state via QubitStateVector (argument `state`)
+      - Applies random single-qubit Rot gates using `params` (shape depth x n_qubits x 3)
+      - Applies brickwork CNOT entangling layers between Rot layers
+      - Returns qml.state()
+    """
+    if device is None:
+        device = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(device, interface="autograd")  # interface doesn't matter if not differentiating
+    def qnode(state):
+        # state is a 1D numpy array of length 2**n_qubits (complex)
+        qml.QubitStateVector(state, wires=range(n_qubits))
+
+        # apply the parameterized random circuit (params already fixed)
+        for d in range(params.shape[0]):
+            for w in range(n_qubits):
+                a, b, c = params[d, w]
+                qml.Rot(a, b, c, wires=w)
+            _apply_entangling_layer(n_qubits, d)
+
+        return qml.state()
+
+    return qnode
+
+def circuit_based_haar_scramble(encoded_states,
+                                n_qubits,
+                                depth=8,
+                                seed=42,
+                                shared_unitary=True,
+                                device=None):
+    """
+    Apply a single-shot circuit-based global scramble to each state in encoded_states.
+
+    Parameters
+    ----------
+    encoded_states : np.ndarray, shape (N, 2**n_qubits) OR (N, ...)
+        If not flat, will be flattened. Must be length <= 2**n_qubits per sample;
+        if shorter, samples are zero-padded and re-normalized.
+    n_qubits : int
+        Number of qubits the circuit uses. dim = 2**n_qubits.
+    depth : int
+        Number of random layers (controls scrambling strength).
+    seed : int or None
+        RNG seed for reproducibility.
+    shared_unitary : bool
+        If True, the same random circuit is applied to every sample (fast).
+        If False, a new random circuit is sampled per-sample (slower).
+    device : qml.device or None
+        Optional PennyLane device to reuse.
+
+    Returns
+    -------
+    scrambled_states : np.ndarray, shape (N, 2**n_qubits), complex128
+    used_params : list of params arrays used (length 1 if shared_unitary else N)
+    """
+    rng = np.random.default_rng(seed)
+    encoded = np.asarray(encoded_states)
+    N = encoded.shape[0]
+
+    dim = 2 ** n_qubits
+
+    # Flatten and pad/truncate each sample to length dim
+    statevecs = np.zeros((N, dim), dtype=np.complex128)
+    for i in range(N):
+        v = np.ravel(encoded[i]).astype(np.complex128)
+        L = v.size
+        if L == 0:
+            statevecs[i, 0] = 1.0 + 0j
+        elif L <= dim:
+            statevecs[i, :L] = v
+            # renormalize to unit norm
+            statevecs[i] /= norm(statevecs[i])
+        else:
+            # truncate (rare)
+            statevecs[i] = v[:dim] / norm(v[:dim])
+
+    used_params = []
+
+    # build one QNode for shared unitary (or reuse for each per-sample if not shared)
+    if shared_unitary:
+        params = _make_random_circuit_params(n_qubits, depth, rng)
+        used_params.append(params)
+        qnode = build_scrambler_qnode(n_qubits, depth, params, device=device)
+        scrambled = np.zeros_like(statevecs, dtype=np.complex128)
+        for i in range(N):
+            out = qnode(statevecs[i])
+            scrambled[i] = np.array(out, dtype=np.complex128)
+            scrambled[i] /= norm(scrambled[i])
+        return scrambled, used_params
+    else:
+        scrambled = np.zeros_like(statevecs, dtype=np.complex128)
+        for i in range(N):
+            params_i = _make_random_circuit_params(n_qubits, depth, rng)
+            used_params.append(params_i)
+            qnode_i = build_scrambler_qnode(n_qubits, depth, params_i, device=device)
+            out = qnode_i(statevecs[i])
+            scrambled[i] = np.array(out, dtype=np.complex128)
+            scrambled[i] /= norm(scrambled[i])
+        return scrambled, used_params
