@@ -7,5 +7,6 @@ data/quark-gluon_train-set_n793900.hdf5
 data/QG1_normalized_64x64_10k
 data/Q1_16x16_100k_encoded.pt
 data/QG1_16x16_images
+mnist/
 
 utils/__pycache__/*
