@@ -51,6 +51,25 @@ def apply_haar_scrambling(encoded_data, num_samples, seed=None):
 
     return np.array(scrambled_vectors)
 
+def fast_haar_scramble(encoded_vector, n_qubits=10, depth=4, seed=None):
+    """Approximate Haar scrambling with a shallow random circuit."""
+    dev = qml.device("default.qubit", wires=n_qubits, shots=None)
+    rng = np.random.default_rng(seed)
+
+    @qml.qnode(dev)
+    def circuit(state):
+        qml.QubitStateVector(state, wires=range(n_qubits))
+        for _ in range(depth):
+            for q in range(n_qubits):
+                qml.RX(rng.uniform(0, 2*np.pi), wires=q)
+                qml.RY(rng.uniform(0, 2*np.pi), wires=q)
+                qml.RZ(rng.uniform(0, 2*np.pi), wires=q)
+            for q in range(n_qubits - 1):
+                qml.CNOT(wires=[q, q + 1])
+        return qml.state()
+
+    return circuit(encoded_vector)
+
 import numpy as np
 from numpy.linalg import qr, det, norm
 
