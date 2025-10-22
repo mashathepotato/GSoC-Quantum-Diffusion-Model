@@ -27,7 +27,7 @@ def angle_circuit(phi):
         qml.RX(np.pi * phi[j], wires=j)
     return [qml.expval(qml.PauliZ(j)) for j in range(4)]
 
-def angle_encoding(data, sample=0):
+def patch_angle_encoding(data, sample=0):
     new_dim = data.shape[1] // 2
 
     out = np.zeros((new_dim, new_dim, 4))

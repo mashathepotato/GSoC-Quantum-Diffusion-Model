@@ -89,6 +89,18 @@ def iqp_encoding(image, wires, threshold=1e-6):
         for j in range(i+1, len(wires)):
             qml.CZ(wires=[wires[i], wires[j]])
 
+def encode_dataset(encoding_fn, data, num_samples, n_qubits):
+    """Encode all samples using a given encoding function."""
+    dev = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev)
+    def circuit(image):
+        encoding_fn(image, wires=range(n_qubits))
+        return qml.state()
+
+    encoded = [circuit(data[i]) for i in range(num_samples)]
+    return np.array(encoded)
+
 
 ######################################
 # Example usage (standalone test)
