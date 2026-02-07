@@ -1,7 +1,6 @@
 # encoding_methods.py
 import numpy as np
 import pennylane as qml
-from pennylane import numpy as pnp
 
 ######################################
 # Utility: get sparse pixel locations

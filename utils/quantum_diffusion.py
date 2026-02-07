@@ -4,9 +4,9 @@ import torch.nn as nn
 import torch.optim as optim
 import pennylane as qml
 import numpy as np
-import scipy
-from numpy.linalg import norm
 from skimage.metrics import structural_similarity as ssim
+from utils.decoding import decode, flip
+from utils.statistics import calculate_statistics, calculate_fid
 
 # Quantum model definitions
 class QuantumLayer(nn.Module):
@@ -40,32 +40,6 @@ class QuantumDiffusionModel(nn.Module):
         outputs = [self.quantum_layer(x_patched[:, p]) for p in range(self.num_patches)]
         return torch.cat(outputs, dim=1)
 
-
-# --- Utility functions ---
-def decode(encoded_data, dim=32):
-    num_samples, h, w, c = encoded_data.shape
-    decoded = np.zeros((num_samples, dim*2, dim*2))
-    for n in range(num_samples):
-        for i in range(h):
-            for j in range(w):
-                for k in range(c):
-                    if k == 0: decoded[n, 2*i, 2*j]   = encoded_data[n, i, j, k]
-                    if k == 1: decoded[n, 2*i, 2*j+1] = encoded_data[n, i, j, k]
-                    if k == 2: decoded[n, 2*i+1, 2*j] = encoded_data[n, i, j, k]
-                    if k == 3: decoded[n, 2*i+1, 2*j+1] = encoded_data[n, i, j, k]
-    return decoded
-
-def flip(decoded_data): return 1 - decoded_data
-
-def calculate_statistics(data):
-    data = data.reshape(data.shape[0], -1)
-    return np.mean(data, axis=0), np.cov(data, rowvar=False)
-
-def calculate_fid(mu1, sigma1, mu2, sigma2, eps=1e-6):
-    diff = mu1 - mu2
-    covmean, _ = scipy.linalg.sqrtm(sigma1 @ sigma2, disp=False)
-    if np.iscomplexobj(covmean): covmean = covmean.real
-    return diff @ diff + np.trace(sigma1) + np.trace(sigma2) - 2 * np.trace(covmean)
 
 def calculate_ssim(real, recon):
     scores = [ssim(real[i], recon[i], data_range=recon[i].max()-recon[i].min())

@@ -1,16 +1,7 @@
 # Previously known as haar nosing, but is really just normal random unitaries
 # %%
 from scipy.stats import unitary_group
-import h5py
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-import pennylane as qml
-from pennylane.templates import RandomLayers
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
 
 # %%
 def normal_random_unitary(seed=None):

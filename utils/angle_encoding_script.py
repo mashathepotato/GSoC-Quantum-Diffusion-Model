@@ -1,15 +1,6 @@
 # %%
-from scipy.stats import unitary_group
-import h5py
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
 import pennylane as qml
-from pennylane.templates import RandomLayers
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
 
 # %%
 # filename = "C:/Users/realc/OneDrive/Documents/GSOC/data/QG1_normalized_16_xl"
@@ -68,5 +59,4 @@ def entangled_angle_circuit(phi):
 # encoded_data = [angle_encoding(data_X, sample) for sample in range(num_samples)]
 # encoded_data = np.array(encoded_data)
 # encoded_data = torch.tensor(encoded_data, dtype=torch.float32)
-
 

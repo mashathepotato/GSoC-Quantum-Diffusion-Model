@@ -70,7 +70,6 @@ def fast_haar_scramble(encoded_vector, n_qubits=10, depth=4, seed=None):
 
     return circuit(encoded_vector)
 
-import numpy as np
 from numpy.linalg import qr, det, norm
 
 def _sample_haar_unitary(dim, seed=None, force_su=False):
