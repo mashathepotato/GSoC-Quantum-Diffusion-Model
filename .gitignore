@@ -10,3 +10,5 @@ data/QG1_16x16_images
 mnist/
 
 utils/__pycache__/*
+
+notebooks/.DS_Store
