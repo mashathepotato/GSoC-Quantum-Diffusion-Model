@@ -30,12 +30,14 @@ If you use or build on this work, please cite our paper:
 
 ### Dependencies and Installation
 
-* ``` pip install requirements.txt ``` to download all dependencies in your own environment
-* All code and model training can run locally on cropped data (16x16) and smaller sample sizes (e.g. 1k instead of 100k samples)
+* Install dependencies: `pip install -r requirements.txt`
+* Latest experiments use 64x64 cropped jet images; for quick local runs, many notebooks use smaller sample sizes (e.g. 1k). Some older notebooks still use 16x16 crops.
 * Quantum or hybrid models use Pennylane for simulations, which can be much slower than the classical variant, so experimenting with the device could be helpful depending on hardware availability
 
-### Executing program
+### Running the notebooks
 
-* Most of the code is in Jupyter notebooks with preloaded examples
-* The utils scripts are in .py files with helper functions and statistics
+* Most of the work is in Jupyter notebooks with preloaded examples
+* Start with `notebooks/data_prep.ipynb` to prepare cropped/normalized data files in `data/`
+* Explore experiments in `notebooks/classical/` and `notebooks/quantum/`
+* Helper functions and stats live in `utils/`
 * Run each notebook separately cell by cell or export to python scripts
