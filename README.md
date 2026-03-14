@@ -8,7 +8,23 @@ The mid-term update blog for this project can be accessed here: [QDM Part I](htt
 
 The final blog can be accessed here: [QDM Part II](https://medium.com/@mashapotatoes/6e693d625931).
 
-More details can be found at the [MLNCP NeurIPS 2024 Workshop](https://openreview.net/pdf?id=vUQLzDAdqt) website.
+More details can be found at the [MLNCP NeurIPS 2024 Workshop](https://openreview.net/pdf?id=vUQLzDAdqt) website. The scaled version of that work is published in the [AAAI Symposium Series 2025](https://ojs.aaai.org/index.php/AAAI-SS/article/view/36901).
+
+If you use or build on this work, please cite our paper:
+
+* [Quantum diffusion model for quark and gluon jet generation (AAAI Symposium Series 2025)](https://ojs.aaai.org/index.php/AAAI-SS/article/view/36901)
+
+```bibtex
+@inproceedings{baidachna2025quantum,
+  title={Quantum diffusion model for quark and gluon jet generation},
+  author={Baidachna, Mariia and Guadarrama, Rey and Dahale, Gopal Ramesh and Magorsch, Tom and Pedraza, Isabel and Matchev, Konstantin T and Matcheva, Katia and Kong, Kyoungchul and Gleyzer, Sergei},
+  booktitle={Proceedings of the AAAI Symposium Series},
+  volume={7},
+  number={1},
+  pages={323--329},
+  year={2025}
+}
+```
 
 ## Getting Started
 
