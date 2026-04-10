@@ -604,6 +604,12 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
 
+        # Fixed reference set for jet-metric comparisons (constant across runs).
+        real_ref_full = data.x_all.to(device).clamp(0.0, 1.0)
+        n_fix = min(64, int(data.x_all.shape[0]))
+        eval_x0 = data.x_all[:n_fix].to(device).clamp(0.0, 1.0)
+        eval_q0 = upsample_cond(data.q_enc_all[:n_fix].to(device))
+
         for seed in seeds:
             set_seed(seed)
             perm = build_permutation(int(data.x_all.shape[0]), seed=seed, mode=args.subset_mode)
@@ -694,17 +700,12 @@ def main() -> None:
                         cond_drop_p=cond_drop_p,
                     )
 
-                # Eval: use the QFM validation set as a common fixed batch (so conditioning exists).
-                n_fix = min(64, int(val_px.shape[0]))
-                val_batch_fixed = val_px[:n_fix].to(device)
-                val_cond_fixed = upsample_cond(val_q[:n_fix].to(device))
-
                 eval_gen = torch.Generator(device=device).manual_seed(int(seed + 1))
                 t_mid = T // 2
 
                 rec_px = one_step_recon_x0(
                     model=model_px,
-                    x0=val_batch_fixed,
+                    x0=eval_x0,
                     t_mid=t_mid,
                     sqrt_alphas_cumprod=sqrt_alphas_cumprod,
                     sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod,
@@ -713,19 +714,25 @@ def main() -> None:
                 )
                 rec_q = one_step_recon_x0(
                     model=model_q,
-                    x0=val_batch_fixed,
+                    x0=eval_x0,
                     t_mid=t_mid,
                     sqrt_alphas_cumprod=sqrt_alphas_cumprod,
                     sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod,
                     gen=eval_gen,
-                    cond=val_cond_fixed,
+                    cond=eval_q0,
                 )
 
-                def _log_row(model_name: str, kind: str, x_hat: torch.Tensor) -> None:
-                    x0 = val_batch_fixed.clamp(0.0, 1.0)
+                def _log_row(
+                    model_name: str,
+                    kind: str,
+                    *,
+                    real_ref: torch.Tensor,
+                    x_hat: torch.Tensor,
+                    val_mse: float | None,
+                ) -> None:
+                    real_ref = real_ref.clamp(0.0, 1.0)
                     x_hat = x_hat.clamp(0.0, 1.0)
-                    val_mse = float(F.mse_loss(x_hat, x0).item())
-                    jet = compute_jet_metrics(x0, x_hat)
+                    jet = compute_jet_metrics(real_ref, x_hat)
                     w.writerow(
                         {
                             "seed": seed,
@@ -735,7 +742,7 @@ def main() -> None:
                             "epochs": int(args.epochs),
                             "metric_kind": kind,
                             "model": model_name,
-                            "val_x0_mse": val_mse,
+                            "val_x0_mse": float("nan") if val_mse is None else float(val_mse),
                             "E_w1": jet["E_w1"],
                             "active_frac_w1": jet["active_frac_w1"],
                             "radial_l2": jet["radial_l2"],
@@ -743,12 +750,23 @@ def main() -> None:
                         }
                     )
 
-                _log_row("px", "recon", rec_px)
-                _log_row("qfm", "recon", rec_q)
+                _log_row(
+                    "px",
+                    "recon",
+                    real_ref=eval_x0,
+                    x_hat=rec_px,
+                    val_mse=float(F.mse_loss(rec_px.clamp(0.0, 1.0), eval_x0).item()),
+                )
+                _log_row(
+                    "qfm",
+                    "recon",
+                    real_ref=eval_x0,
+                    x_hat=rec_q,
+                    val_mse=float(F.mse_loss(rec_q.clamp(0.0, 1.0), eval_x0).item()),
+                )
 
                 if int(args.eval_samples) > 0:
                     n_samp = int(args.eval_samples)
-                    # Compare samples to the same fixed validation distribution for consistency.
                     samples_px = p_sample_loop(
                         model=model_px,
                         n=n_samp,
@@ -763,12 +781,12 @@ def main() -> None:
                         clip_x0=True,
                     )
 
-                    # For conditional sampling, reuse val conditions (wrap if needed).
+                    # For conditional sampling, reuse fixed eval conditions (wrap if needed).
                     if n_samp <= n_fix:
-                        cond = val_cond_fixed[:n_samp]
+                        cond = eval_q0[:n_samp]
                     else:
                         reps = int(math.ceil(n_samp / n_fix))
-                        cond = val_cond_fixed.repeat(reps, 1, 1, 1)[:n_samp]
+                        cond = eval_q0.repeat(reps, 1, 1, 1)[:n_samp]
 
                     samples_q = p_sample_loop(
                         model=model_q,
@@ -784,12 +802,11 @@ def main() -> None:
                         clip_x0=True,
                     )
 
-                    _log_row("px", "sample", samples_px)
-                    _log_row("qfm", "sample", samples_q)
+                    _log_row("px", "sample", real_ref=real_ref_full, x_hat=samples_px, val_mse=None)
+                    _log_row("qfm", "sample", real_ref=real_ref_full, x_hat=samples_q, val_mse=None)
 
     print(f"Wrote learning-curve metrics to: {out_csv}")
 
 
 if __name__ == "__main__":
     main()
-
