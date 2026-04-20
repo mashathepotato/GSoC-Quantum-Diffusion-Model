@@ -455,3 +455,193 @@ class DDPMBaseline(Baseline):
         obj.model.to(obj.device)
         return obj
 
+
+@dataclass(frozen=True)
+class RectifiedFlowConfig:
+    image_size: int = 64
+    base_channels: int = 64
+    time_dim: int = 128
+    data_range: str = "01"  # "01" or "pm1"
+
+    noise_scale: float = 1.0
+    t_embed_scale: float = 1_000.0
+
+    solver: str = "rk4"  # "euler" or "rk4"
+    solver_steps: int = 80
+
+
+@torch.no_grad()
+def _rf_integrate(
+    *,
+    model: nn.Module,
+    x_init: torch.Tensor,
+    steps: int,
+    t0: float = 1.0,
+    t1: float = 0.0,
+    solver: str = "rk4",
+    t_scale: float = 1_000.0,
+) -> torch.Tensor:
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    if solver not in {"euler", "rk4"}:
+        raise ValueError("solver must be 'euler' or 'rk4'")
+
+    x = x_init
+    B = x.shape[0]
+    dt = (t1 - t0) / float(steps)
+
+    for s in range(steps):
+        t = t0 + s * dt
+        t_vec = torch.full((B,), float(t), device=x.device, dtype=torch.float32)
+
+        if solver == "euler":
+            v = model(x, t_vec * float(t_scale))
+            x = x + dt * v
+            continue
+
+        # RK4
+        k1 = model(x, t_vec * float(t_scale))
+        k2 = model(x + 0.5 * dt * k1, (t_vec + 0.5 * dt) * float(t_scale))
+        k3 = model(x + 0.5 * dt * k2, (t_vec + 0.5 * dt) * float(t_scale))
+        k4 = model(x + dt * k3, (t_vec + dt) * float(t_scale))
+        x = x + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+    return x
+
+
+@register("rectified_flow")
+class RectifiedFlowBaseline(Baseline):
+    """
+    Rectified Flow / Flow Matching baseline.
+
+    Training:
+      - sample x0 ~ data
+      - sample z ~ N(0, I)
+      - sample t ~ U[0,1]
+      - x_t = (1-t) * x0 + t * z
+      - target v = z - x0
+      - minimize ||v_theta(x_t, t) - v||^2
+
+    Sampling:
+      - initialize x(1) = z ~ N(0, I)
+      - integrate dx/dt = v_theta(x, t) from t=1 -> 0
+    """
+
+    def __init__(
+        self,
+        *,
+        cfg: RectifiedFlowConfig | None = None,
+        device: torch.device | None = None,
+    ):
+        super().__init__(device=device)
+        self.cfg = cfg or RectifiedFlowConfig()
+
+        model_cfg = UNetConfig(
+            in_channels=1,
+            out_channels=1,
+            base_channels=self.cfg.base_channels,
+            time_dim=self.cfg.time_dim,
+        )
+        self.model = UNet(model_cfg).to(self.device)
+
+    def fit(self, x_train: torch.Tensor, *, cfg: TrainConfig) -> dict[str, float]:
+        _check_image_tensor(x_train)
+        x_train = x_train.to(self.device, dtype=torch.float32)
+
+        if x_train.shape[2] != self.cfg.image_size or x_train.shape[3] != self.cfg.image_size:
+            raise ValueError(
+                f"Expected images {self.cfg.image_size}x{self.cfg.image_size}; got {tuple(x_train.shape[2:])}"
+            )
+
+        x_train_m = _to_model_range(x_train, self.cfg.data_range)
+        loader = DataLoader(TensorDataset(x_train_m), batch_size=cfg.batch_size, shuffle=True, drop_last=True)
+
+        opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr)
+
+        self.model.train()
+        last_loss = float("nan")
+
+        use_amp = bool(cfg.amp) and self.device.type == "cuda"
+        scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+
+        noise_scale = float(self.cfg.noise_scale)
+        t_scale = float(self.cfg.t_embed_scale)
+
+        for _epoch in range(cfg.epochs):
+            losses = []
+            for (x0,) in loader:
+                x0 = x0.to(self.device)
+
+                z = noise_scale * torch.randn_like(x0)
+                t = torch.rand((x0.shape[0],), device=self.device, dtype=torch.float32)
+                t_img = t.view(-1, 1, 1, 1)
+
+                x_t = (1.0 - t_img) * x0 + t_img * z
+                v_target = z - x0
+
+                opt.zero_grad(set_to_none=True)
+                if use_amp:
+                    with torch.cuda.amp.autocast():
+                        v_pred = self.model(x_t, t * t_scale)
+                        loss = F.mse_loss(v_pred, v_target)
+                    scaler.scale(loss).backward()
+                    if cfg.grad_clip is not None:
+                        scaler.unscale_(opt)
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.grad_clip)
+                    scaler.step(opt)
+                    scaler.update()
+                else:
+                    v_pred = self.model(x_t, t * t_scale)
+                    loss = F.mse_loss(v_pred, v_target)
+                    loss.backward()
+                    if cfg.grad_clip is not None:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), cfg.grad_clip)
+                    opt.step()
+
+                losses.append(float(loss.detach().cpu().item()))
+
+            last_loss = float(np.mean(losses)) if losses else last_loss
+
+        return {"train_loss": last_loss}
+
+    @torch.no_grad()
+    def sample(self, *, cfg: SampleConfig) -> torch.Tensor:
+        set_seed(int(cfg.seed))
+        self.model.eval()
+
+        n = int(cfg.n)
+        z = float(self.cfg.noise_scale) * torch.randn((n, 1, self.cfg.image_size, self.cfg.image_size), device=self.device)
+        x = _rf_integrate(
+            model=self.model,
+            x_init=z,
+            steps=int(cfg.steps or self.cfg.solver_steps),
+            t0=1.0,
+            t1=0.0,
+            solver=str(self.cfg.solver),
+            t_scale=float(self.cfg.t_embed_scale),
+        )
+
+        x01 = _from_model_range(x, self.cfg.data_range)
+        return torch.clamp(x01, 0.0, 1.0).detach().cpu()
+
+    def save(self, path: str | Path) -> None:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "name": self.name,
+            "cfg": self.cfg,
+            "model_cfg": self.model.cfg,
+            "model_state": self.model.state_dict(),
+        }
+        torch.save(payload, p)
+
+    @classmethod
+    def load(cls, path: str | Path, *, device: torch.device | None = None) -> "RectifiedFlowBaseline":
+        payload = torch.load(Path(path), map_location="cpu")
+        cfg = payload.get("cfg")
+        if cfg is None:
+            raise BaselineError(f"Missing 'cfg' in checkpoint: {path}")
+        obj = cls(cfg=cfg, device=device)
+        obj.model.load_state_dict(payload["model_state"])
+        obj.model.to(obj.device)
+        return obj
