@@ -10,7 +10,7 @@ Design goals:
     new baselines later.
 """
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -438,18 +438,29 @@ class DDPMBaseline(Baseline):
         p.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "name": self.name,
-            "cfg": self.cfg,
-            "model_cfg": self.model.cfg,
+            "cfg": asdict(self.cfg),
+            "model_cfg": asdict(self.model.cfg),
             "model_state": self.model.state_dict(),
         }
         torch.save(payload, p)
 
     @classmethod
     def load(cls, path: str | Path, *, device: torch.device | None = None) -> "DDPMBaseline":
-        payload = torch.load(Path(path), map_location="cpu")
-        cfg = payload.get("cfg")
-        if cfg is None:
+        p = Path(path)
+        try:
+            payload = torch.load(p, map_location="cpu", weights_only=True)
+        except TypeError:  # older torch (no weights_only kwarg)
+            payload = torch.load(p, map_location="cpu")
+        except Exception:
+            # Backward-compat for older checkpoints that pickle custom classes.
+            # Only use this if you trust the checkpoint source.
+            payload = torch.load(p, map_location="cpu", weights_only=False)
+
+        cfg_raw = payload.get("cfg")
+        if cfg_raw is None:
             raise BaselineError(f"Missing 'cfg' in checkpoint: {path}")
+        cfg = cfg_raw if isinstance(cfg_raw, DDPMConfig) else DDPMConfig(**cfg_raw)
+
         obj = cls(cfg=cfg, device=device)
         obj.model.load_state_dict(payload["model_state"])
         obj.model.to(obj.device)
@@ -629,18 +640,27 @@ class RectifiedFlowBaseline(Baseline):
         p.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "name": self.name,
-            "cfg": self.cfg,
-            "model_cfg": self.model.cfg,
+            "cfg": asdict(self.cfg),
+            "model_cfg": asdict(self.model.cfg),
             "model_state": self.model.state_dict(),
         }
         torch.save(payload, p)
 
     @classmethod
     def load(cls, path: str | Path, *, device: torch.device | None = None) -> "RectifiedFlowBaseline":
-        payload = torch.load(Path(path), map_location="cpu")
-        cfg = payload.get("cfg")
-        if cfg is None:
+        p = Path(path)
+        try:
+            payload = torch.load(p, map_location="cpu", weights_only=True)
+        except TypeError:  # older torch (no weights_only kwarg)
+            payload = torch.load(p, map_location="cpu")
+        except Exception:
+            payload = torch.load(p, map_location="cpu", weights_only=False)
+
+        cfg_raw = payload.get("cfg")
+        if cfg_raw is None:
             raise BaselineError(f"Missing 'cfg' in checkpoint: {path}")
+        cfg = cfg_raw if isinstance(cfg_raw, RectifiedFlowConfig) else RectifiedFlowConfig(**cfg_raw)
+
         obj = cls(cfg=cfg, device=device)
         obj.model.load_state_dict(payload["model_state"])
         obj.model.to(obj.device)
