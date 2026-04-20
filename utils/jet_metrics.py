@@ -50,6 +50,43 @@ def center_by_energy_centroid_zeropad(x01: torch.Tensor) -> torch.Tensor:
     return out
 
 
+@torch.no_grad()
+def center_by_energy_centroid_roll(x01: torch.Tensor) -> torch.Tensor:
+    """
+    Center jet images by (energy-weighted) centroid using wrap-around (torch.roll).
+
+    This matches the centering used by the metric helper in `notebooks/quantum/qfm_cond_qg.ipynb`.
+
+    Args:
+        x01: (N,1,H,W) tensor in [0, 1].
+
+    Returns:
+        (N,1,H,W) centered tensor in [0, 1].
+    """
+    if x01.ndim != 4 or x01.shape[1] != 1:
+        raise ValueError(f"Expected x01 shape (N,1,H,W); got {tuple(x01.shape)}")
+
+    x01 = x01.clone()
+    N, _, H, W = x01.shape
+
+    w = x01
+    w_sum = w.sum(dim=(2, 3), keepdim=True) + 1e-8
+
+    yy = torch.arange(H, device=x01.device).view(1, 1, H, 1).float()
+    xx = torch.arange(W, device=x01.device).view(1, 1, 1, W).float()
+
+    cy = (w * yy).sum(dim=(2, 3), keepdim=True) / w_sum
+    cx = (w * xx).sum(dim=(2, 3), keepdim=True) / w_sum
+
+    ty = torch.round((H // 2) - cy.squeeze(-1).squeeze(-1).squeeze(1)).to(torch.int64)
+    tx = torch.round((W // 2) - cx.squeeze(-1).squeeze(-1).squeeze(1)).to(torch.int64)
+
+    out = x01
+    for i in range(N):
+        out[i] = torch.roll(out[i], shifts=(int(ty[i].item()), int(tx[i].item())), dims=(1, 2))
+    return out
+
+
 @dataclass(frozen=True)
 class RadialBins:
     bin_w_flat: torch.Tensor  # (B, H*W)
@@ -118,6 +155,7 @@ def compute_jet_metrics(
     *,
     nbins: int = 32,
     thr_percentile: float = 99.5,
+    centering: str = "zeropad",
 ) -> dict:
     """
     Domain-aware jet-image metrics intended for learning curves:
@@ -141,8 +179,15 @@ def compute_jet_metrics(
     H, W = int(real01.shape[2]), int(real01.shape[3])
     bins = make_radial_bins(H, W, nbins, device=device)
 
-    real_c = center_by_energy_centroid_zeropad(real01.clamp(0.0, 1.0))
-    gen_c = center_by_energy_centroid_zeropad(gen01.clamp(0.0, 1.0))
+    if centering == "zeropad":
+        center_fn = center_by_energy_centroid_zeropad
+    elif centering == "roll":
+        center_fn = center_by_energy_centroid_roll
+    else:
+        raise ValueError("centering must be 'zeropad' or 'roll'")
+
+    real_c = center_fn(real01.clamp(0.0, 1.0))
+    gen_c = center_fn(gen01.clamp(0.0, 1.0))
 
     real_pix = _to_numpy_1d(real_c)
     thr = float(np.percentile(real_pix, thr_percentile))
@@ -182,4 +227,3 @@ def compute_jet_metrics(
         "radial_l2_log": radial_l2_log,
     }
     return metrics
-
